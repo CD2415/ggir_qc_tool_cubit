@@ -63,4 +63,4 @@ jobs:
         with:
           app-name: 'ggir-qc-proxy'
           slot-name: 'Production'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_28B45AA733064BAD86484A6D51035A78 }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_32645C2A7E6048059533989DADD97DEA }}
