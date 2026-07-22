@@ -34,6 +34,13 @@ _DATA_DICTIONARY_NIGHT_URL = "https://wadpac.github.io/GGIR/articles/GGIRoutput.
 _DATA_DICTIONARY_DAY_URL = "https://wadpac.github.io/GGIR/articles/GGIRoutput.html#ggir-part-5"
 
 
+def _extract_calendar_dates(df, col="calendar_date"):
+    """Return JSON array string of `col` values from a filtered DataFrame subset."""
+    if col not in df.columns or df.empty:
+        return "[]"
+    return json.dumps(df[col].dropna().astype(str).tolist())
+
+
 def _build_pdf_proxy_url(file_id, filename=None):
     """Build a stable PDF proxy URL for a SharePoint item id."""
     base_url = settings.PDF_PROXY_BASE_URL.rstrip("/")
@@ -505,6 +512,7 @@ def _render_single_phase_viewer(
         phase_label=base_phase_label,
         base_filename=settings.TARGET_FILES["csv"],
         display_name=settings.TARGET_FILES["csv"],
+        data_type="Night",
     )
 
     st.markdown("---")
@@ -539,6 +547,7 @@ def _render_single_phase_viewer(
         base_filename=day_csv_name,
         display_name=day_csv_name,
         missing_hint=f"{settings.TARGET_FILES['day_csv_prefix']}*.csv",
+        data_type="Day",
     )
 
 
@@ -639,6 +648,7 @@ def _render_multi_phase_viewer(phase_files, access_token, username, participant_
                     phase_label=pf["phase"],
                     base_filename=settings.TARGET_FILES["csv"],
                     display_name=settings.TARGET_FILES["csv"],
+                    data_type="Night",
                 )
 
     st.markdown("---")
@@ -700,6 +710,7 @@ def _render_multi_phase_viewer(phase_files, access_token, username, participant_
                     base_filename=day_csv_name,
                     display_name=day_csv_name,
                     missing_hint=f"{settings.TARGET_FILES['day_csv_prefix']}*.csv",
+                    data_type="Day",
                 )
 
 
@@ -707,7 +718,10 @@ def _render_multi_phase_viewer(phase_files, access_token, username, participant_
 # Shared CSV editor (used by both single and multi-phase viewers)
 # =============================================================================
 
-def _render_activity_log_panel(access_token, phase_label, panel_key_suffix):
+def _render_activity_log_panel(
+    access_token, phase_label, panel_key_suffix,
+    data_type="Night", rows_added="[]", rows_deleted="[]",
+):
     """Render per-phase activity logging controls and persist explicit decision."""
     participant_id = st.session_state.get("participant_id")
     monitor = st.session_state.get("device")
@@ -734,7 +748,12 @@ def _render_activity_log_panel(access_token, phase_label, panel_key_suffix):
     st.session_state.setdefault(m_key, False)
 
     st.subheader("📝 Log Activity")
-    st.caption(f"Phase: {phase_label}")
+    added_count = len(json.loads(rows_added))
+    deleted_count = len(json.loads(rows_deleted))
+    caption_parts = [f"Phase: {phase_label}", f"Type: {data_type}"]
+    if added_count or deleted_count:
+        caption_parts.append(f"Pending: {added_count} added, {deleted_count} deleted")
+    st.caption(" | ".join(caption_parts))
 
     status = st.session_state.pop(status_key, None)
     if status:
@@ -823,6 +842,9 @@ def _render_activity_log_panel(access_token, phase_label, panel_key_suffix):
             "Study_Phase": phase_label,
             "QC_Outcome": qc_outcome,
             "Comments": comments,
+            "Data_Type": data_type,
+            "Rows_Added": rows_added,
+            "Rows_Deleted": rows_deleted,
         }
 
         with st.spinner("Submitting activity log..."):
@@ -861,6 +883,7 @@ def _render_csv_editor(
     base_filename=None,
     display_name=None,
     missing_hint=None,
+    data_type="Night",
 ):
     """
     Render an editable CSV data_editor block.
@@ -949,6 +972,8 @@ def _render_csv_editor(
 
     rows_to_delete = int(edited_df["_to_delete"].sum())
     rows_added = int(edited_df["_added"].sum())
+    added_dates = _extract_calendar_dates(edited_df[edited_df["_added"]])
+    deleted_dates = _extract_calendar_dates(edited_df[edited_df["_to_delete"]])
     data_changed = st.session_state.get(key_force_dirty, False) or not edited_df.equals(st.session_state[key_current])
     editor_status = st.session_state.pop(key_editor_status, None)
 
@@ -1157,6 +1182,9 @@ def _render_csv_editor(
         access_token=access_token,
         phase_label=phase_label,
         panel_key_suffix=(phase_label or "NoPhase").replace(" ", "_").replace("/", "_"),
+        data_type=data_type,
+        rows_added=added_dates,
+        rows_deleted=deleted_dates,
     )
 
 

@@ -10,6 +10,29 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 from config import settings
 
+_OLD_ACTIVITY_LOG_HEADERS = [
+    "User_email",
+    "Monitor",
+    "Participant_ID",
+    "Study_Phase",
+    "QC_Outcome",
+    "Comments",
+    "timestamp_QC'ed",
+]
+
+
+def _migrate_activity_log_df(df):
+    """Upgrade old 7-col activity log to current schema; returns None on unknown schema."""
+    if list(df.columns) == settings.ACTIVITY_LOG_HEADERS:
+        return df
+    if list(df.columns) == _OLD_ACTIVITY_LOG_HEADERS:
+        df = df.copy()
+        df["Data_Type"] = ""
+        df["Rows_Added"] = "[]"
+        df["Rows_Deleted"] = "[]"
+        return df[settings.ACTIVITY_LOG_HEADERS]
+    return None
+
 
 def _device_folder_name(device):
     """Return the SharePoint folder name for a display device label."""
@@ -481,13 +504,16 @@ def log_to_sharepoint(access_token, log_row, root_path=None):
                 current_df = pd.DataFrame(columns=expected_headers)
 
         if list(current_df.columns) != expected_headers:
-            return {
-                "success": False,
-                "error": (
-                    "Header mismatch in activity log CSV. "
-                    f"Expected {expected_headers} but found {list(current_df.columns)}"
-                ),
-            }
+            migrated = _migrate_activity_log_df(current_df)
+            if migrated is None:
+                return {
+                    "success": False,
+                    "error": (
+                        "Header mismatch in activity log CSV. "
+                        f"Expected {expected_headers} but found {list(current_df.columns)}"
+                    ),
+                }
+            current_df = migrated
 
         updated_df = pd.concat(
             [current_df, pd.DataFrame([row_values], columns=expected_headers)],
@@ -540,13 +566,16 @@ def remove_last_activity_log_for_scope(access_token, participant_id, monitor, ph
         current_df = pd.read_csv(io.StringIO(content))
         expected_headers = settings.ACTIVITY_LOG_HEADERS
         if list(current_df.columns) != expected_headers:
-            return {
-                "success": False,
-                "error": (
-                    "Header mismatch in activity log CSV. "
-                    f"Expected {expected_headers} but found {list(current_df.columns)}"
-                ),
-            }
+            migrated = _migrate_activity_log_df(current_df)
+            if migrated is None:
+                return {
+                    "success": False,
+                    "error": (
+                        "Header mismatch in activity log CSV. "
+                        f"Expected {expected_headers} but found {list(current_df.columns)}"
+                    ),
+                }
+            current_df = migrated
 
         mask = (
             (current_df["Participant_ID"].astype(str) == str(participant_id))

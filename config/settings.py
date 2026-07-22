@@ -72,6 +72,9 @@ ACTIVITY_LOG_HEADERS = [
     "Study_Phase",
     "QC_Outcome",
     "Comments",
+    "Data_Type",
+    "Rows_Added",
+    "Rows_Deleted",
     "timestamp_QC'ed",
 ]
 
