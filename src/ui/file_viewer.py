@@ -721,6 +721,7 @@ def _render_multi_phase_viewer(phase_files, access_token, username, participant_
 def _render_activity_log_panel(
     access_token, phase_label, panel_key_suffix,
     data_type="Night", rows_added="[]", rows_deleted="[]",
+    clear_keys=(),
 ):
     """Render per-phase activity logging controls and persist explicit decision."""
     participant_id = st.session_state.get("participant_id")
@@ -851,6 +852,8 @@ def _render_activity_log_panel(
             result = log_to_sharepoint(access_token, payload)
 
         if result.get("success"):
+            for k in clear_keys:
+                st.session_state.pop(k, None)
             st.session_state[d_key] = DECISION_LOGGED
             latest_entry = {
                 **payload,
@@ -901,12 +904,16 @@ def _render_csv_editor(
     key_force_dirty = f"force_dirty{state_suffix}"
     key_pending_missing = _pending_missing_key(state_suffix)
     key_copy_selection = _copy_selection_key(state_suffix)
+    key_pending_added_dates = f"pending_added_dates{state_suffix}"
+    key_pending_deleted_dates = f"pending_deleted_dates{state_suffix}"
     participant_id = st.session_state.get("participant_id")
     monitor = st.session_state.get("device")
     tracked_saves_key = saved_files_key(participant_id, monitor, phase_label)
     st.session_state.setdefault(tracked_saves_key, [])
     st.session_state.setdefault(key_save_state_history, [])
     st.session_state.setdefault(key_force_dirty, False)
+    st.session_state.setdefault(key_pending_added_dates, "[]")
+    st.session_state.setdefault(key_pending_deleted_dates, "[]")
 
     if base_filename is None:
         base_filename = settings.TARGET_FILES["csv"]
@@ -972,8 +979,6 @@ def _render_csv_editor(
 
     rows_to_delete = int(edited_df["_to_delete"].sum())
     rows_added = int(edited_df["_added"].sum())
-    added_dates = _extract_calendar_dates(edited_df[edited_df["_added"]])
-    deleted_dates = _extract_calendar_dates(edited_df[edited_df["_to_delete"]])
     data_changed = st.session_state.get(key_force_dirty, False) or not edited_df.equals(st.session_state[key_current])
     editor_status = st.session_state.pop(key_editor_status, None)
 
@@ -1117,6 +1122,12 @@ def _render_csv_editor(
                     base_filename, save_df, username,
                 )
                 if new_file:
+                    def _accumulate_dates(key, new_df, col="calendar_date"):
+                        prev = json.loads(st.session_state.get(key, "[]"))
+                        new = json.loads(_extract_calendar_dates(new_df, col))
+                        st.session_state[key] = json.dumps(list(dict.fromkeys(prev + new)))
+                    _accumulate_dates(key_pending_added_dates, edited_df[edited_df["_added"]])
+                    _accumulate_dates(key_pending_deleted_dates, edited_df[edited_df["_to_delete"]])
                     st.session_state[key_original] = save_df.copy()
                     st.session_state[key_current] = _df_with_delete_col(save_df)
                     st.session_state[key_last_saved] = new_file["name"]
@@ -1183,8 +1194,9 @@ def _render_csv_editor(
         phase_label=phase_label,
         panel_key_suffix=(phase_label or "NoPhase").replace(" ", "_").replace("/", "_"),
         data_type=data_type,
-        rows_added=added_dates,
-        rows_deleted=deleted_dates,
+        rows_added=st.session_state.get(key_pending_added_dates, "[]"),
+        rows_deleted=st.session_state.get(key_pending_deleted_dates, "[]"),
+        clear_keys=(key_pending_added_dates, key_pending_deleted_dates),
     )
 
 
